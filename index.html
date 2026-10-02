@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador de citas</title>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--ink:#1b2430;--muted:#5d6b7a;--line:#cfd7df;--accent:#1f4e79;--accent-ink:#fff;--ok:#2e7d4f}
+@media (prefers-color-scheme:dark){:root{--bg:#12171d;--card:#1a212a;--ink:#e6ebf0;--muted:#98a6b5;--line:#2d3945;--accent:#7fb2e0;--accent-ink:#10161c;--ok:#6fcf97}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 Georgia,"Times New Roman",serif}
+main{max-width:1000px;margin:0 auto;padding:2rem 1rem 4rem}
+h1{font-size:2rem;margin:0 0 .25rem;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 2rem;font-family:system-ui,sans-serif;font-size:.95rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+form{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+.full{grid-column:1/-1}
+label{display:block;font:600 .85rem system-ui,sans-serif;margin-bottom:.25rem}
+input{width:100%;padding:.55rem .65rem;font:inherit;font-size:.95rem;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:4px}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.hint{font:.8rem system-ui,sans-serif;color:var(--muted);margin-top:.2rem}
+.out{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;padding:.9rem 1rem;margin-bottom:1rem}
+.out h2{font:600 .9rem system-ui,sans-serif;margin:0 0 .4rem}
+.out p{margin:0 0 .7rem;overflow-wrap:anywhere}
+button{font:600 .85rem system-ui,sans-serif;padding:.4rem .8rem;background:var(--accent);color:var(--accent-ink);border:0;border-radius:4px;cursor:pointer}
+button.done{background:var(--ok);color:#fff}
+.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.empty{color:var(--muted);font:.95rem system-ui,sans-serif}
+</style>
+</head>
+<body>
+<main>
+<h1>Generador de citas</h1>
+<p class="sub">Llena los datos de la obra. Las citas se actualizan solas y se copian con la cursiva incluida.</p>
+<div class="grid">
+<form id="f" autocomplete="off" onsubmit="return false">
+  <div><label for="nombre">Nombre del autor</label><input id="nombre" value="Friedrich"></div>
+  <div><label for="apellido">Apellido del autor</label><input id="apellido" value="Nietzsche"></div>
+  <div class="full"><label for="titulo">Título completo</label><input id="titulo" value="Segunda consideración intempestiva: sobre la utilidad y los inconvenientes de la Historia para la vida"></div>
+  <div class="full"><label for="traductor">Traductor</label><input id="traductor" value="Joaquín Etorena"><div class="hint">Déjalo vacío si no hay traductor.</div></div>
+  <div><label for="ciudad">Ciudad</label><input id="ciudad" value="Buenos Aires"></div>
+  <div><label for="editorial">Editorial</label><input id="editorial" value="Libros del Zorzal"></div>
+  <div><label for="anio">Año</label><input id="anio" value="2006"></div>
+  <div><label for="pagina">Página citada</label><input id="pagina" value="274"></div>
+  <div class="full"><button type="button" id="limpiar" class="ghost">Vaciar campos</button></div>
+</form>
+<section aria-live="polite" id="salida"></section>
+</div>
+</main>
+<script>
+const ids=["nombre","apellido","titulo","traductor","ciudad","editorial","anio","pagina"];
+const el=Object.fromEntries(ids.map(i=>[i,document.getElementById(i)]));
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const val=k=>el[k].value.trim();
+
+function construir(){
+  const d=Object.fromEntries(ids.map(k=>[k,esc(val(k))]));
+  const nom=[d.nombre,d.apellido].filter(Boolean).join(" ");
+  const tit=d.titulo?`<i>${d.titulo}</i>`:"";
+  const trad=d.traductor?` Traducción de: ${d.traductor}`:"";
+  const pub=[d.ciudad&&d.editorial?`${d.ciudad}: ${d.editorial}`:(d.ciudad||d.editorial),d.anio].filter(Boolean).join(", ");
+  const pag=d.pagina?` ${d.pagina}`:"";
+
+  const primera=`${nom}, ${tit}.${trad}${pub?` (${pub})`:""}${pag}.`.replace(/\.\./g,".").replace(/\s+\./g,".");
+  const segunda=`${d.apellido}, ${tit}${d.pagina?`, ${d.pagina}`:""}.`;
+  const bib=`${[d.apellido,d.nombre].filter(Boolean).join(", ")}. ${tit}.${d.traductor?` Traducción de: ${d.traductor}.`:""}${pub?` ${d.ciudad&&d.editorial?`${d.ciudad}: ${d.editorial}`:(d.ciudad||d.editorial)}${d.anio?(d.ciudad||d.editorial?", ":"")+d.anio:""}.`:""}`.replace(/\.\./g,".");
+  return [["Primera vez en el texto",primera],["Segunda vez en el texto",segunda],["Bibliografía",bib]];
+}
+
+function pintar(){
+  const salida=document.getElementById("salida");
+  if(!ids.some(k=>val(k))){salida.innerHTML='<p class="empty">Escribe algún dato para generar las citas.</p>';return}
+  salida.innerHTML=construir().map(([t,h],i)=>
+    `<div class="out"><h2>${t}</h2><p id="c${i}">${h}</p><button type="button" data-i="${i}">Copiar</button></div>`).join("");
+}
+
+async function copiar(btn){
+  const p=document.getElementById("c"+btn.dataset.i);
+  const html=p.innerHTML,txt=p.innerText;
+  try{
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/html":new Blob([html],{type:"text/html"}),
+      "text/plain":new Blob([txt],{type:"text/plain"})})]);
+  }catch(e){
+    const r=document.createRange();r.selectNodeContents(p);
+    const s=getSelection();s.removeAllRanges();s.addRange(r);
+    document.execCommand("copy");s.removeAllRanges();
+  }
+  btn.textContent="Copiado";btn.classList.add("done");
+  setTimeout(()=>{btn.textContent="Copiar";btn.classList.remove("done")},1500);
+}
+
+document.getElementById("salida").addEventListener("click",e=>{if(e.target.matches("button[data-i]"))copiar(e.target)});
+document.getElementById("f").addEventListener("input",pintar);
+document.getElementById("limpiar").addEventListener("click",()=>{ids.forEach(k=>el[k].value="");pintar();el.nombre.focus()});
+pintar();
+</script>
+</body>
+</html>
