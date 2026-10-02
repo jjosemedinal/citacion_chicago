@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador de citas</title>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--ink:#1b2430;--muted:#5d6b7a;--line:#cfd7df;--accent:#1f4e79;--accent-ink:#fff;--ok:#2e7d4f}
+@media (prefers-color-scheme:dark){:root{--bg:#12171d;--card:#1a212a;--ink:#e6ebf0;--muted:#98a6b5;--line:#2d3945;--accent:#7fb2e0;--accent-ink:#10161c;--ok:#6fcf97}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 Georgia,"Times New Roman",serif}
+main{max-width:1050px;margin:0 auto;padding:2rem 1rem 4rem}
+h1{font-size:2rem;margin:0 0 .25rem}
+.sub{color:var(--muted);margin:0 0 1.5rem;font:.95rem system-ui,sans-serif}
+.tipo{max-width:420px;margin-bottom:1.5rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+form{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;align-content:start}
+.full{grid-column:1/-1}
+label{display:block;font:600 .85rem system-ui,sans-serif;margin-bottom:.25rem}
+input,select,textarea{width:100%;padding:.55rem .65rem;font:inherit;font-size:.95rem;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:4px}
+textarea{min-height:6.5rem;resize:vertical}
+:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.hint{font:.8rem system-ui,sans-serif;color:var(--muted);margin-top:.2rem}
+.out{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;padding:.9rem 1rem;margin-bottom:1rem}
+.out h2{font:600 .9rem system-ui,sans-serif;margin:0 0 .4rem}
+.out p{margin:0 0 .7rem;overflow-wrap:anywhere}
+button{font:600 .85rem system-ui,sans-serif;padding:.4rem .8rem;background:var(--accent);color:var(--accent-ink);border:0;border-radius:4px;cursor:pointer}
+button.done{background:var(--ok);color:#fff}
+.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.empty{color:var(--muted);font:.95rem system-ui,sans-serif}
+</style>
+</head>
+<body>
+<main>
+<h1>Generador de citas</h1>
+<p class="sub">Elige el tipo de fuente y llena los datos. Los campos entre paréntesis son opcionales: si los dejas vacíos, desaparecen de la cita.</p>
+<div class="tipo"><label for="tipo">Tipo de fuente</label><select id="tipo"></select></div>
+<div class="grid">
+  <form id="f" autocomplete="off" onsubmit="return false"></form>
+  <section id="salida" aria-live="polite"></section>
+</div>
+</main>
+<script>
+/* ---------- Definición de los tipos ----------
+ Campos: "id|Etiqueta|valor de ejemplo|t"  (prefijo "!" = ancho completo, "t" = área de texto)
+ Plantillas: {campo} se reemplaza; [ ... ] se omite si algún campo dentro está vacío;
+ {campo|cap} pone la primera letra en mayúscula; {pub} = "Ciudad: Editorial, Año" armado solo con lo que exista. */
+const TRAD="[. Traducción de: {traductor}]";
+const T={
+libro:{n:"Libro de un autor",
+ f:["nombre|Nombre|Friedrich","apellido|Apellido|Nietzsche","!titulo|Título completo|Segunda consideración intempestiva: sobre la utilidad y los inconvenientes de la Historia para la vida","!traductor|Traductor (opcional)|Joaquín Etorena","ciudad|Ciudad|Buenos Aires","editorial|Editorial|Libros del Zorzal","anio|Año|2006","pagina|Página citada (opcional)|274"],
+ p:"{nombre} {apellido}, <i>{titulo}</i>"+TRAD+"[ ({pub})][ {pagina}].",
+ s:"{apellido}, <i>{titulo}</i>[, {pagina}].",
+ b:"{apellido}, {nombre}. <i>{titulo}</i>.[ Traducción de: {traductor}.][ {pub}]."},
+revista:{n:"Artículo de revista académica",
+ f:["nombre|Nombre|Walter","apellido|Apellido|Benjamin","!tart|Título del artículo|Desembalo mi biblioteca","!revista|Título de la revista|Bibliotecas, Archivos y Museos Escolares","volumen|Volumen (opcional)|","numero|Número (opcional)|4","anio|Año|2024","pagina|Página citada (opcional)|4","!ptot|Páginas totales del artículo|269-277"],
+ p:'{nombre} {apellido}, "{tart}", <i>{revista}</i>[ {volumen}][, núm. {numero}] ({anio})[: {pagina}].',
+ s:'{apellido}, "{tart}"[, {pagina}].',
+ b:'{apellido}, {nombre}. "{tart}". <i>{revista}</i>[ {volumen}][, núm. {numero}] ({anio})[: {ptot}].'},
+dos:{n:"Libro de dos autores",
+ f:["nombre1|Nombre del autor 1|María Teresa","apellido1|Apellido del autor 1|Uribe de Hincapié","nombre2|Nombre del autor 2|Liliana María","apellido2|Apellido del autor 2|López Lopera","!titulo|Título completo|Las palabras de la guerra: un estudio sobre las memorias de las guerras civiles en Colombia","!traductor|Traductor (opcional)|","ciudad|Ciudad|Medellín","editorial|Editorial|Instituto de Estudios Políticos Universidad de Antioquia","anio|Año|2006","pagina|Página citada (opcional)|142"],
+ p:"{nombre1} {apellido1} y {nombre2} {apellido2}, <i>{titulo}</i>"+TRAD+"[ ({pub})][ {pagina}].",
+ s:"{apellido1} y {apellido2}, <i>{titulo}</i>[, {pagina}].",
+ b:"{apellido1}, {nombre1} y {nombre2} {apellido2}. <i>{titulo}</i>.[ Traducción de: {traductor}.][ {pub}]."},
+varios:{n:"Tres autores o más",
+ f:["!autores|Autores (uno por línea: Apellido, Nombre)|Boss, Hugo\nSánchez, Javier\nRosa, Amalia\nMaldonado, Julio|t","!titulo|Título completo|Estudio sobre como algunos artículos tienen tantos autores","!traductor|Traductor (opcional)|","ciudad|Ciudad|Medellín","editorial|Editorial|Universidad de Antioquia","anio|Año|2026","pagina|Página citada (opcional)|1123"],
+ hint:"Con más de 6 autores, la bibliografía muestra solo los tres primeros y «et al.».",
+ calc:v=>{const a=v.autores.split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{const i=l.indexOf(",");return i<0?{a:l,n:""}:{a:l.slice(0,i).trim(),n:l.slice(i+1).trim()}});
+  const fmt=(x,i)=>i?`${x.n} ${x.a}`.trim():`${x.a}, ${x.n}`.replace(/, $/,"");
+  let lista="";
+  if(a.length>6)lista=a.slice(0,3).map(fmt).join(", ")+" et al.";
+  else if(a.length>1)lista=a.slice(0,-1).map(fmt).join(", ")+" y "+fmt(a[a.length-1],1);
+  else if(a.length)lista=fmt(a[0],0);
+  const p=a[0]||{a:"",n:""};return{nombre1:p.n,apellido1:p.a,lista}},
+ p:"{nombre1} {apellido1} et al., <i>{titulo}</i>"+TRAD+"[ ({pub})][ {pagina}].",
+ s:"{apellido1} et al., <i>{titulo}</i>[, {pagina}].",
+ b:"{lista}. <i>{titulo}</i>.[ Traducción de: {traductor}.][ {pub}]."},
+editor:{n:"Editor, traductor o compilador en lugar de autor",
+ f:["nombre|Nombre|Irene","apellido|Apellido|Andrés-Suárez","rol|Rol (ed., trad., comp.)|ed.","!titulo|Título completo|Antología del microrrelato español (1906-2011): El cuarto género narrativo","!traductor|Traductor (opcional)|","ciudad|Ciudad|Madrid","editorial|Editorial|Cátedra","anio|Año|2012","pagina|Página citada (opcional)|15-16"],
+ p:"{nombre} {apellido}, {rol} <i>{titulo}</i>"+TRAD+"[ ({pub})][ {pagina}].",
+ s:"{apellido}, <i>{titulo}</i>[, {pagina}].",
+ b:"{apellido}, {nombre}, {rol} <i>{titulo}</i>.[ Traducción de: {traductor}.][ {pub}]."},
+anonimo:{n:"Libro sin autor ni editor conocido",
+ f:["!titulo|Título completo|Stanze in lode della donna brutta","ciudad|Ciudad|Florencia","editorial|Editorial (opcional)|","anio|Año|1547","pagina|Página citada (opcional)|15"],
+ p:"<i>{titulo}</i>[ ({pub})][ {pagina}].",
+ s:"<i>{titulo}</i>[, {pagina}].",
+ b:"<i>{titulo}</i>.[ {pub}]."},
+corp:{n:"Libro con autor corporativo",
+ f:["!org|Organización|Instituto de Estudios Fiscales","!titulo|Título completo|Informe para la reforma de la Ley General Tributaria","ciudad|Ciudad|Madrid","editorial|Editorial|Instituto de Estudios Fiscales","anio|Año|2001","pagina|Página citada (opcional)|15"],
+ p:"{org}, <i>{titulo}</i>[ ({pub})][ {pagina}].",
+ s:"{org}, <i>{titulo}</i>[, {pagina}].",
+ b:"{org}, <i>{titulo}</i>.[ {pub}]."},
+capitulo:{n:"Capítulo de libro (obra multivolumen)",
+ f:["nombre|Nombre|Jorge Luis","apellido|Apellido|Borges","!tcap|Título del capítulo|Funes, el memorioso","!titulo|Título del libro|Ficciones","volumen|Volumen (opcional)|4","rol|Rol del editor (dir., ed., comp.)|comp.","!editor|Nombre y apellido del editor (opcional)|Juan José Medina","ciudad|Ciudad|Arauca","editorial|Editorial|Rincón","anio|Año|2010","pagina|Página citada|8","ptot|Páginas totales del capítulo|1-15"],
+ p:'{nombre} {apellido}, "{tcap}", <i>{titulo}</i>[ T.{volumen}][, {rol} {editor}][ ({pub})][ {pagina}].',
+ s:'{apellido}, "{tcap}"[, {pagina}].',
+ b:'{apellido}, {nombre}. "{tcap}". <i>{titulo}</i>[, T.{volumen}][, {rol} {editor}][, {ptot}].[ {pub}.]'},
+prologo:{n:"Prefacio, prólogo o introducción",
+ f:["nombre|Nombre|James","apellido|Apellido|Rieger","preliminar|Parte (introducción, prólogo…)|introducción","!titulo|Título del libro|Frankenstein: or, The Modern Prometheus","!autor|Autor del libro|Mary Wollstonecraft Shelley","ciudad|Ciudad|Chicago","editorial|Editorial|University of Chicago Press","anio|Año|1982","pagina|Página citada|XX-XXI","ptot|Páginas totales|I-XXX"],
+ p:"{nombre} {apellido}, {preliminar} a <i>{titulo}</i>, de {autor}[ ({pub})][ {pagina}].",
+ s:"{apellido}, {preliminar}[, {pagina}].",
+ b:"{apellido}, {nombre}. {preliminar|cap} a <i>{titulo}</i>, de {autor}[, {ptot}].[ {pub}.]"},
+periodico:{n:"Artículo de periódico",
+ f:["nombre|Nombre|Adam","apellido|Apellido|Doskey","!tart|Título del artículo|Cherokee Phoenix: The Birth and Revival of Cherokee Printing in the Southeast","!periodico|Título del periódico|Excerpts","ciudad|Ciudad (opcional)|Atlanta","dia|Día|26","mes|Mes|julio","anio|Año|2014","pagina|Página citada (opcional)|60","ptot|Páginas totales del artículo|56-68"],
+ p:'{nombre} {apellido}, "{tart}", <i>{periodico}</i>[ ({ciudad})] {dia} de {mes} de {anio}[: {pagina}].',
+ s:'{apellido}, "{tart}"[, {pagina}].',
+ b:'{apellido}, {nombre}. "{tart}". <i>{periodico}</i>[ ({ciudad})] {dia} de {mes} de {anio}[: {ptot}].'},
+inedito:{n:"Tesis, ponencias y otros inéditos",
+ f:["nombre|Nombre|Francisco José","apellido|Apellido|Hernández Rubio","!titulo|Título|Los límites del eliminacionismo: Una solución epigenética al problema mente-cerebro","naturaleza|Naturaleza del inédito|Tesis doctoral","universidad|Universidad o institución|Universidad de Murcia","anio|Año|2010","pagina|Página citada (opcional)|145"],
+ p:'{nombre} {apellido}, "{titulo}" ({naturaleza}, {universidad}, {anio})[ {pagina}].',
+ s:'{apellido}, "{titulo}"[, {pagina}].',
+ b:'{apellido}, {nombre}. "{titulo}". {naturaleza}, {universidad}, {anio}.'}
+};
+
+/* ---------- Motor ---------- */
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const campos=k=>T[k].f.map(s=>{let[id,label,def="",kind]=s.split("|");const full=id[0]=="!";return{id:full?id.slice(1):id,label,def,full,area:kind=="t"}});
+const S={};Object.keys(T).forEach(k=>{S[k]={};campos(k).forEach(c=>S[k][c.id]=c.def)});
+let cur="libro";
+
+function llenar(t,v){
+  const re=/\[([^\[\]]*)\]/g;
+  while(re.test(t))t=t.replace(re,(m,g)=>{let ok=true;g.replace(/\{(\w+)(?:\|\w+)?\}/g,(x,k)=>{if(!v[k])ok=false});return ok?g:""});
+  t=t.replace(/\{(\w+)(\|cap)?\}/g,(m,k,c)=>{let x=v[k]||"";return c?x.charAt(0).toUpperCase()+x.slice(1):x});
+  return t.replace(/\s+([.,:;)])/g,"$1").replace(/([.,]) *\./g,(m,a)=>a==","?m:".").replace(/,\s*,/g,",").replace(/\s{2,}/g," ").replace(/^[\s,.]+/,"").trim();
+}
+
+function pintar(){
+  const t=T[cur],raw=S[cur],v={};
+  Object.keys(raw).forEach(k=>v[k]=esc(raw[k].trim()));
+  const pubA=v.ciudad&&v.editorial?`${v.ciudad}: ${v.editorial}`:(v.ciudad||v.editorial||"");
+  v.pub=[pubA,v.anio].filter(Boolean).join(", ");
+  if(t.calc)Object.assign(v,t.calc(v));
+  const salida=document.getElementById("salida");
+  if(!Object.keys(raw).some(k=>raw[k].trim())){salida.innerHTML='<p class="empty">Escribe algún dato para generar las citas.</p>';return}
+  salida.innerHTML=[["Primera vez en el texto",t.p],["Segunda vez en el texto",t.s],["Bibliografía",t.b]].map(([h,p],i)=>
+    `<div class="out"><h2>${h}</h2><p id="c${i}">${llenar(p,v)}</p><button type="button" data-i="${i}">Copiar</button></div>`).join("");
+}
+
+function formulario(){
+  const f=document.getElementById("f");
+  f.innerHTML=campos(cur).map(c=>`<div class="${c.full?"full":""}"><label for="f_${c.id}">${c.label}</label>${c.area?`<textarea id="f_${c.id}"></textarea>`:`<input id="f_${c.id}">`}</div>`).join("")
+   +(T[cur].hint?`<p class="hint full">${T[cur].hint}</p>`:"")
+   +'<div class="full"><button type="button" id="limpiar" class="ghost">Vaciar campos</button></div>';
+  campos(cur).forEach(c=>document.getElementById("f_"+c.id).value=S[cur][c.id]);
+  pintar();
+}
+
+async function copiar(btn){
+  const p=document.getElementById("c"+btn.dataset.i),html=p.innerHTML,txt=p.innerText;
+  try{await navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([txt],{type:"text/plain"})})])}
+  catch(e){const r=document.createRange();r.selectNodeContents(p);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");s.removeAllRanges()}
+  btn.textContent="Copiado";btn.classList.add("done");
+  setTimeout(()=>{btn.textContent="Copiar";btn.classList.remove("done")},1500);
+}
+
+const sel=document.getElementById("tipo");
+sel.innerHTML=Object.keys(T).map(k=>`<option value="${k}">${T[k].n}</option>`).join("");
+sel.onchange=()=>{cur=sel.value;formulario()};
+document.getElementById("f").addEventListener("input",e=>{S[cur][e.target.id.slice(2)]=e.target.value;pintar()});
+document.getElementById("f").addEventListener("click",e=>{if(e.target.id=="limpiar"){Object.keys(S[cur]).forEach(k=>S[cur][k]="");formulario()}});
+document.getElementById("salida").addEventListener("click",e=>{if(e.target.matches("button[data-i]"))copiar(e.target)});
+formulario();
+</script>
+</body>
+</html>
